@@ -13,6 +13,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from engine import screen, DEFAULT_THESIS, DEFAULT_WEIGHTS
+from demo_company import HARBORLINE
 
 load_dotenv()
 
@@ -52,24 +53,46 @@ st.caption(
     "evidenced and marks the rest as gaps."
 )
 
+# Input keys shared by the widgets below and the example loader.
+_COMPANY_FIELDS = (
+    "name", "url", "one_liner", "founder_bios", "market_description",
+    "product_description", "traction_notes", "round_details",
+)
+
+
+def _load_example_company():
+    """Pre-fill every input with the Harborline demo, editable before running."""
+    for field in _COMPANY_FIELDS:
+        st.session_state[field] = HARBORLINE[field]
+
+
+st.button("Load example company", on_click=_load_example_company)
+
 col1, col2 = st.columns(2)
 with col1:
-    name = st.text_input("Company name")
-    url = st.text_input("URL (optional)")
-    one_liner = st.text_input("One liner (what the company does)")
+    name = st.text_input("Company name", key="name")
+    url = st.text_input("URL (optional)", key="url")
+    one_liner = st.text_input("One liner (what the company does)", key="one_liner")
     founder_bios = st.text_area(
         "Founder bios (paste LinkedIn About sections or your own notes)",
         height=180,
+        key="founder_bios",
     )
 with col2:
-    market_description = st.text_area("Market description", height=90)
-    product_description = st.text_area("Product description", height=90)
+    market_description = st.text_area(
+        "Market description", height=90, key="market_description"
+    )
+    product_description = st.text_area(
+        "Product description", height=90, key="product_description"
+    )
     traction_notes = st.text_area(
         "Traction notes (revenue, pilots, LOIs, waitlist, prior investors)",
         height=90,
+        key="traction_notes",
     )
     round_details = st.text_input(
-        "Round details (size, valuation, lead) (optional)"
+        "Round details (size, valuation, lead) (optional)",
+        key="round_details",
     )
 
 if st.button("Run screening", type="primary"):
