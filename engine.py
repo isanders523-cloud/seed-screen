@@ -115,7 +115,10 @@ def run_predictive(features: dict, weights: dict = None) -> dict:
         d = dims.get(dim)
         if d is None:
             continue
-        score = float(d.get("score", 0))  # each dimension scored 0 to 10
+        raw_score = d.get("score")
+        if raw_score is None:
+            continue  # null-scored (unevidenced) dimension: treat as absent from the weighted sum
+        score = float(raw_score)  # each dimension scored 0 to 10
         contributions[dim] = {
             "score": score,
             "weight": weight,
