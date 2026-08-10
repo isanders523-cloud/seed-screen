@@ -10,12 +10,124 @@ Requires ANTHROPIC_API_KEY in the environment or a .env file.
 
 import json
 import streamlit as st
+import plotly.graph_objects as go
 from dotenv import load_dotenv
 
 from engine import screen, DEFAULT_THESIS, DEFAULT_WEIGHTS
 from demo_company import HARBORLINE
 
 load_dotenv()
+
+
+# --- Result visualizations -------------------------------------------------
+# Category styling pairs a distinct hue AND lightness with a pattern fill and
+# an on-bar text label, so the segments stay distinguishable without color.
+_COMPOSITION_SEGMENTS = (
+    ("causal_share", "Causal", "#1a9850", "/"),
+    ("correlational_share", "Correlational", "#fdae61", "."),
+    ("confounded_share", "Confounded", "#d73027", "x"),
+)
+
+_DIMENSION_ORDER = (
+    "team", "business_model", "product", "market",
+    "timing", "traction", "competition",
+)
+
+
+def _composition_figure(comp):
+    """Horizontal stacked bar of the causal-audit score composition."""
+    fig = go.Figure()
+    for key, label, color, pattern in _COMPOSITION_SEGMENTS:
+        pct = float(comp.get(key, 0) or 0) * 100
+        fig.add_bar(
+            x=[pct],
+            y=["composition"],
+            orientation="h",
+            name=label,
+            marker=dict(
+                color=color,
+                line=dict(color="white", width=1.5),
+                pattern=dict(shape=pattern, size=7, solidity=0.35),
+            ),
+            text=[f"{label} {pct:.0f}%"],
+            textposition="inside",
+            insidetextanchor="middle",
+            textfont=dict(color="white", size=13),
+            hovertemplate=f"{label}: %{{x:.0f}}%<extra></extra>",
+            cliponaxis=False,
+        )
+    fig.update_layout(
+        barmode="stack",
+        height=150,
+        margin=dict(l=8, r=8, t=8, b=8),
+        xaxis=dict(range=[0, 100], ticksuffix="%", title=None, fixedrange=True),
+        yaxis=dict(showticklabels=False, fixedrange=True),
+        legend=dict(orientation="h", yanchor="bottom", y=1.05, x=0),
+        showlegend=True,
+    )
+    return fig
+
+
+def _dimension_radar(dimensions):
+    """Radar of the seven dimension scores (0-10). Null scores are omitted."""
+    labels, values = [], []
+    for dim in _DIMENSION_ORDER:
+        detail = dimensions.get(dim)
+        if not detail:
+            continue
+        score = detail.get("score")
+        if score is None:
+            continue
+        labels.append(dim.replace("_", " "))
+        values.append(float(score))
+    if not values:
+        return None
+    fig = go.Figure(
+        go.Scatterpolar(
+            r=values + [values[0]],       # close the polygon
+            theta=labels + [labels[0]],
+            fill="toself",
+            mode="lines+markers",
+            line=dict(color="#1f77b4", width=2),
+            fillcolor="rgba(31,119,180,0.35)",
+            hovertemplate="%{theta}: %{r:.0f}/10<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        polar=dict(radialaxis=dict(range=[0, 10], tickvals=[0, 2, 4, 6, 8, 10])),
+        height=380,
+        margin=dict(l=50, r=50, t=40, b=40),
+        showlegend=False,
+    )
+    return fig
+
+
+def _contribution_figure(contributions):
+    """Horizontal bars of each dimension's weighted contribution, largest first."""
+    # Ascending sort so the largest contribution lands at the TOP of the chart.
+    items = sorted(contributions.items(), key=lambda kv: kv[1]["contribution"])
+    labels = [dim.replace("_", " ") for dim, _ in items]
+    values = [v["contribution"] for _, v in items]
+    fig = go.Figure(
+        go.Bar(
+            x=values,
+            y=labels,
+            orientation="h",
+            marker=dict(color="#1f77b4"),
+            text=[f"{v:.2f}" for v in values],
+            textposition="outside",
+            cliponaxis=False,
+            hovertemplate="%{y}: %{x:.2f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        height=340,
+        margin=dict(l=8, r=40, t=10, b=10),
+        xaxis=dict(title="Weighted contribution"),
+        yaxis=dict(title=None),
+    )
+    return fig
+
 
 st.set_page_config(page_title="Seed Screen", page_icon="S", layout="wide")
 
@@ -138,12 +250,24 @@ if st.button("Run screening", type="primary"):
             f"correlational {comp.get('correlational_share', 0):.0%}, "
             f"confounded {comp.get('confounded_share', 0):.0%}"
         )
+        st.plotly_chart(
+            _composition_figure(comp),
+            use_container_width=True,
+            key="composition_chart",
+        )
 
     tab1, tab2, tab3, tab4 = st.tabs(
         ["1. Descriptive", "2. Predictive", "3. Causal audit", "4. Prescriptive"]
     )
 
     with tab1:
+        radar = _dimension_radar(d.get("dimensions", {}))
+        if radar is not None:
+            st.plotly_chart(
+                radar, use_container_width=True, key="dimension_radar"
+            )
+        else:
+            st.info("No dimensions were scored, so there is nothing to chart.")
         st.subheader(d.get("one_liner", ""))
         for dim, detail in d.get("dimensions", {}).items():
             score = detail.get("score")
@@ -162,16 +286,15 @@ if st.button("Run screening", type="primary"):
     with tab2:
         st.metric("Screening score", f"{p['screening_score']}/100")
         st.caption(p.get("note", ""))
-        rows = [
-            {
-                "dimension": dim,
-                "score /10": v["score"],
-                "weight": v["weight"],
-                "contribution": v["contribution"],
-            }
-            for dim, v in p.get("contributions", {}).items()
-        ]
-        st.dataframe(rows, use_container_width=True)
+        contributions = p.get("contributions", {})
+        if contributions:
+            st.plotly_chart(
+                _contribution_figure(contributions),
+                use_container_width=True,
+                key="contribution_chart",
+            )
+        else:
+            st.info("No scored dimensions contributed to the score.")
 
     with tab3:
         st.caption(c.get("summary", ""))
