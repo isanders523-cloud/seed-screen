@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+.streamlit/secrets.toml
+*_corpus.py
+test_*.py
+*-source/
+venv/
